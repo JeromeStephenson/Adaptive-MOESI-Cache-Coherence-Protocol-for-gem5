@@ -62,21 +62,30 @@ Counter = 4000000
 Both protocols successfully produced the correct output.
 
 ---
-
 # Adaptive MOESI Modifications
 
-The following changes were introduced into the protocol:
+The Adaptive MOESI protocol extends the default `MOESI_CMP_directory` implementation in gem5 by introducing a new **Owner Adaptive (OA)** state and modifying the coherence state machine to improve cache-to-cache communication.
 
-- Added adaptive ownership transitions
-- Introduced optimized cache-to-cache forwarding
-- Reduced unnecessary memory fetches
-- Added adaptive acknowledgment handling
-- Modified L1 controller state transitions
-- Modified Directory controller behavior
-- Added Owner → Modified transition optimization
+## Key Contributions
 
+- Implemented a new **OA (Owner Adaptive)** coherence state to extend the standard MOESI protocol.
+- Modified the **L1 cache controller** to support OA state transitions and adaptive ownership management.
+- Updated the **Directory controller** to recognize and coordinate the new adaptive coherence behavior.
+- Added adaptive state transitions that allow cache lines in the OA state to directly respond to coherence requests.
+- Increased **cache-to-cache data forwarding**, reducing unnecessary memory accesses when another cache already owns the latest copy.
+- Reduced invalidation traffic by preserving ownership whenever possible instead of forcing immediate write-backs or memory fetches.
+- Implemented new SLICC actions and transitions for adaptive ownership transfer while maintaining protocol correctness.
+- Verified the implementation using a multithreaded OpenMP benchmark and compared it against the original MOESI protocol under identical simulation settings.
+- Collected and analyzed Ruby coherence statistics to evaluate the impact of the adaptive protocol on latency, forwarding behavior, and coherence traffic.
 ---
 
+## New Coherence State
+
+The Adaptive MOESI protocol introduces one additional coherence state:
+
+| State | Description |
+|-------|-------------|
+| **OA (Owner Adaptive)** | An adaptive ownership state that allows a cache holding the most recent clean copy of a cache line to continue serving requests directly to other caches, reducing unnecessary memory accesses and improving cache-to-cache communication. |
 # Simulation Results
 
 | Metric | MOESI | Adaptive MOESI |
@@ -205,30 +214,38 @@ Although message count increases, these acknowledgments enable direct cache-to-c
 
 ---
 
-# Cache State Behavior
+## Adaptive State Extensions
 
-The Adaptive protocol introduces additional states such as
-
-```
-MM
-MM_W
-OM
-O
-```
-
-These states help maintain ownership while servicing requests directly from caches.
-
-Example statistics:
+The Adaptive MOESI protocol extends the standard MOESI state machine by introducing a new adaptive ownership state:
 
 ```
-MM.Fwd_GETX        1,333,373
-MM_W.Fwd_GETX      5,333,351
-O.Fwd_GETS                84
+M  - Modified
+O  - Owner
+E  - Exclusive
+S  - Shared
+I  - Invalid
+
+OA - Owner Adaptive (new)
 ```
 
-These transitions do not exist in the original protocol.
+The **OA (Owner Adaptive)** state is entered when a cache line can continue serving requests directly to other caches without immediately reverting to the standard Owner behavior. This adaptive ownership mechanism enables additional cache-to-cache transfers and reduces unnecessary coherence operations.
 
----
+The protocol modifies the ownership transition path as follows:
+
+```
+M
+│
+├── GETS
+│
+▼
+OA
+│
+├── GETX
+├── GETS
+└── Ownership Transfer
+```
+
+Unlike the original MOESI protocol, the Adaptive MOESI implementation uses the **OA state** to optimize ownership transitions and improve data sharing between cores.
 
 # Performance Discussion
 
